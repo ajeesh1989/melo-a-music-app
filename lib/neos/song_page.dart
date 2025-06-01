@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:marquee/marquee.dart';
 import 'package:provider/provider.dart';
@@ -18,20 +16,78 @@ class SongPage extends StatelessWidget {
   }
 
   Widget fallbackImage() {
-    return Image.network(
-      'https://cdn-images.dzcdn.net/images/cover/ba03f373d0f4ecfce750a899683b2b4c/0x1900-000000-80-0-0.jpg',
+    return Image.asset(
+      'assets/images/album.png',
       fit: BoxFit.cover,
       width: double.infinity,
-      height: 250,
+      height: 330,
     );
+  }
+
+  void showActionPopup(BuildContext context, String message) {
+    final overlay = Overlay.of(context);
+    late OverlayEntry overlayEntry;
+    final opacity = ValueNotifier<double>(0.0);
+
+    overlayEntry = OverlayEntry(
+      builder:
+          (context) => Positioned(
+            bottom: 150,
+            left: MediaQuery.of(context).size.width * 0.1,
+            right: MediaQuery.of(context).size.width * 0.1,
+            child: Material(
+              color: Colors.transparent,
+              child: ValueListenableBuilder<double>(
+                valueListenable: opacity,
+                builder: (context, value, _) {
+                  return AnimatedOpacity(
+                    opacity: value,
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOut,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      child: Center(
+                        child: Text(
+                          message,
+                          style: TextStyle(
+                            color: Colors.grey[900],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+    );
+
+    overlay.insert(overlayEntry);
+    Future.delayed(const Duration(milliseconds: 50), () {
+      opacity.value = 1.0;
+    });
+
+    Future.delayed(const Duration(seconds: 2, milliseconds: 500), () async {
+      opacity.value = 0.0;
+      await Future.delayed(const Duration(milliseconds: 400));
+      overlayEntry.remove();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final music = Provider.of<MusicProvider>(context, listen: false);
-
-    // Synchronize current index if songPath changes
     final index = music.playlist.indexWhere((f) => f.path == songPath);
+
     if (index != -1 && music.currentIndex != index) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         music.setCurrentIndex(index);
@@ -92,7 +148,6 @@ class SongPage extends StatelessWidget {
                   music.playlist.isNotEmpty
                       ? music.playlist[music.currentIndex].path
                       : '';
-
               final fileName = currentSongPath.split('/').last;
               final albumArtImageProvider = music.albumArtImageProvider;
 
@@ -100,9 +155,9 @@ class SongPage extends StatelessWidget {
                 if (albumArtImageProvider != null) {
                   return Image(
                     image: albumArtImageProvider,
-                    fit: BoxFit.cover,
+                    fit: BoxFit.fill,
                     width: double.infinity,
-                    height: 250,
+                    height: 330,
                     errorBuilder:
                         (context, error, stackTrace) => fallbackImage(),
                   );
@@ -120,7 +175,7 @@ class SongPage extends StatelessWidget {
 
                   return Column(
                     children: [
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -129,9 +184,12 @@ class SongPage extends StatelessWidget {
                             width: 60,
                             child: NeuBox(
                               child: GestureDetector(
-                                onTap: () => Navigator.pop(context),
+                                onTap:
+                                    () => Navigator.of(
+                                      context,
+                                    ).popUntil((route) => route.isFirst),
                                 child: const Icon(
-                                  Icons.arrow_back,
+                                  Icons.expand_more,
                                   color: Colors.black26,
                                 ),
                               ),
@@ -149,11 +207,35 @@ class SongPage extends StatelessWidget {
                                 builder:
                                     (context) => IconButton(
                                       icon: const Icon(
-                                        Icons.menu,
+                                        Icons.favorite,
                                         color: Colors.black26,
                                       ),
                                       onPressed: () {
-                                        Scaffold.of(context).openDrawer();
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder:
+                                                (context) => FavoritesPage(
+                                                  favorites: music.favorites,
+                                                  allSongs:
+                                                      music.filteredPlaylist,
+                                                  onToggleFavorite:
+                                                      music.toggleFavorite,
+                                                  onPlaySong: (path) {
+                                                    final idx = music.playlist
+                                                        .indexWhere(
+                                                          (f) => f.path == path,
+                                                        );
+                                                    if (idx != -1) {
+                                                      music.setCurrentIndex(
+                                                        idx,
+                                                      );
+                                                      music.player.play();
+                                                    }
+                                                  },
+                                                ),
+                                          ),
+                                        );
                                       },
                                     ),
                               ),
@@ -161,7 +243,7 @@ class SongPage extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 25),
+                      const SizedBox(height: 15),
                       NeuBox(
                         child: Column(
                           children: [
@@ -214,21 +296,28 @@ class SongPage extends StatelessWidget {
                                       ],
                                     ),
                                   ),
-                                  IconButton(
-                                    icon: Icon(
-                                      music.isFavorite(currentSongPath)
-                                          ? Icons.favorite
-                                          : Icons.favorite_border_outlined,
-                                      color:
+                                  NeuBox(
+                                    child: IconButton(
+                                      icon: Icon(
+                                        music.isFavorite(currentSongPath)
+                                            ? Icons.favorite
+                                            : Icons.favorite_border,
+                                        color:
+                                            music.isFavorite(currentSongPath)
+                                                ? Colors.grey
+                                                : Colors.black26,
+                                        size: 25,
+                                      ),
+                                      onPressed: () {
+                                        music.toggleFavorite(currentSongPath);
+                                        showActionPopup(
+                                          context,
                                           music.isFavorite(currentSongPath)
-                                              ? Colors.red
-                                              : null,
-                                      size: 30,
+                                              ? "Added to Favorites"
+                                              : "Removed from Favorites",
+                                        );
+                                      },
                                     ),
-                                    onPressed:
-                                        () => music.toggleFavorite(
-                                          currentSongPath,
-                                        ),
                                   ),
                                 ],
                               ),
@@ -236,7 +325,7 @@ class SongPage extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
@@ -250,7 +339,15 @@ class SongPage extends StatelessWidget {
                               color: music.isShuffling ? Colors.black : null,
                             ),
                             tooltip: "Shuffle",
-                            onPressed: music.toggleShuffle,
+                            onPressed: () {
+                              music.toggleShuffle();
+                              showActionPopup(
+                                context,
+                                music.isShuffling
+                                    ? "Shuffle On"
+                                    : "Shuffle Off",
+                              );
+                            },
                           ),
                           IconButton(
                             icon: Icon(
@@ -259,16 +356,21 @@ class SongPage extends StatelessWidget {
                                   : Icons.repeat,
                               color: music.isRepeating ? Colors.black : null,
                             ),
-                            onPressed: music.toggleRepeat,
+                            onPressed: () {
+                              music.toggleRepeat();
+                              showActionPopup(
+                                context,
+                                music.isRepeating ? "Repeat On" : "Repeat Off",
+                              );
+                            },
                           ),
-
                           Text(
                             formatDuration(totalDuration),
                             style: const TextStyle(color: Colors.black),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 25),
+                      const SizedBox(height: 10),
                       NeuBox(
                         child: Slider(
                           min: 0,
@@ -280,14 +382,11 @@ class SongPage extends StatelessWidget {
                           activeColor: const Color.fromARGB(255, 59, 147, 61),
                           inactiveColor: Colors.grey[400],
                           onChanged: (value) {
-                            final seekPos = Duration(
-                              milliseconds: value.toInt(),
-                            );
-                            player.seek(seekPos);
+                            player.seek(Duration(milliseconds: value.toInt()));
                           },
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 15),
                       SizedBox(
                         height: 75,
                         child: Row(
@@ -326,19 +425,14 @@ class SongPage extends StatelessWidget {
                               ),
                             ),
                             Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8.0,
-                                ),
-                                child: NeuBox(
-                                  child: IconButton(
-                                    icon: const Icon(
-                                      Icons.skip_next,
-                                      size: 30,
-                                      color: Colors.black54,
-                                    ),
-                                    onPressed: music.next,
+                              child: NeuBox(
+                                child: IconButton(
+                                  icon: const Icon(
+                                    Icons.skip_next,
+                                    size: 30,
+                                    color: Colors.black54,
                                   ),
+                                  onPressed: music.next,
                                 ),
                               ),
                             ),

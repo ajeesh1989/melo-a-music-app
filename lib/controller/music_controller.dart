@@ -1,16 +1,18 @@
 import 'dart:io';
 import 'dart:developer';
-import 'dart:convert'; // for base64Encode
 import 'dart:typed_data';
 
+import 'package:audio_session/audio_session.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:audio_session/audio_session.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+// Don't forget to initialize Hive in your app main() before using MusicProvider:
+// await Hive.initFlutter();
 
 class MusicProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
@@ -20,56 +22,21 @@ class MusicProvider extends ChangeNotifier {
   bool _isShuffling = false;
   bool _isRepeating = false;
   bool _loading = true;
+
   Uint8List? _albumArtBytes;
   ImageProvider? _albumArtImageProvider;
-
   ImageProvider? get albumArtImageProvider => _albumArtImageProvider;
-
-  // Updated fetchAlbumArtForCurrent to store bytes & create MemoryImage:
-
-  Future<void> fetchAlbumArtForCurrent(String path) async {
-    _albumArtBytes = await _extractAlbumArtBytes(path);
-    if (_albumArtBytes != null) {
-      _albumArtImageProvider = MemoryImage(_albumArtBytes!);
-    } else {
-      _albumArtImageProvider = null;
-    }
-    notifyListeners();
-  }
-
-  // New method to extract bytes from FFmpeg output:
-  Future<Uint8List?> _extractAlbumArtBytes(String path) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final coverPath = '${tempDir.path}/cover.jpg';
-
-      final coverFile = File(coverPath);
-      if (await coverFile.exists()) {
-        await coverFile.delete();
-      }
-
-      final command = '-i "$path" -an -vcodec copy "$coverPath"';
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-
-      if (returnCode!.isValueSuccess() && await coverFile.exists()) {
-        return await coverFile.readAsBytes();
-      } else {
-        // log("FFmpeg failed with code: $returnCode");
-      }
-    } catch (e) {
-      // log("FFmpeg album art extract error: $e");
-    }
-    return null;
-  }
 
   final ScrollController scrollController = ScrollController();
   final TextEditingController searchController = TextEditingController();
+
   String _searchQuery = '';
   bool _isSearching = false;
 
   static const String _cacheKey = "cached_song_paths";
   static const String _favoritesCacheKey = "cached_favorites";
+  static const String _shuffleKey = "shuffle_enabled";
+  static const String _currentIndexKey = "current_song_index";
 
   Set<String> _favorites = {};
 
@@ -80,49 +47,47 @@ class MusicProvider extends ChangeNotifier {
   bool get loading => _loading;
   String get searchQuery => _searchQuery;
   Set<String> get favorites => Set.unmodifiable(_favorites);
-
-  List<File> get filteredPlaylist {
-    if (_searchQuery.isEmpty) {
-      return _playlist;
-    }
-    return _playlist.where((file) {
-      final fileName = file.path.split('/').last.toLowerCase();
-      return fileName.contains(_searchQuery.toLowerCase());
-    }).toList();
-  }
-
+  List<File> get filteredPlaylist =>
+      _searchQuery.isEmpty
+          ? _playlist
+          : _playlist
+              .where(
+                (file) => file.path.toLowerCase().contains(
+                  _searchQuery.toLowerCase(),
+                ),
+              )
+              .toList();
   AudioPlayer get player => _player;
+
+  late Box _box;
 
   MusicProvider() {
     _init();
   }
 
-  void setCurrentIndex(int index) {
-    if (index >= 0 && index < _playlist.length) {
-      _currentIndex = index;
-      fetchAlbumArtForCurrent(_playlist[index].path);
-      _playCurrent();
-      notifyListeners();
-    }
-  }
-
   Future<void> _init() async {
+    // Open Hive box (must be called once)
+    _box = await Hive.openBox('musicBox');
+
     final granted = await _requestPermissions();
-    if (granted) {
-      await _initializePlayer();
-    } else {
+    if (!granted) {
       _loading = false;
       notifyListeners();
+      return;
     }
 
-    _player.playerStateStream.listen((state) {
-      if (state.playing) {
-        _scrollToCurrentSong();
-      }
+    _isShuffling = _box.get(_shuffleKey, defaultValue: false) as bool;
 
+    await _initializePlayer();
+
+    _player.playerStateStream.listen((state) {
+      if (state.playing) _scrollToCurrentSong();
       if (state.processingState == ProcessingState.completed) {
         _handleSongComplete();
       }
+    });
+    player.playingStream.listen((isPlaying) {
+      notifyListeners();
     });
   }
 
@@ -131,153 +96,104 @@ class MusicProvider extends ChangeNotifier {
       final sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
 
       if (sdkInt >= 33) {
-        var audioStatus = await Permission.audio.status;
-        if (!audioStatus.isGranted) {
-          audioStatus = await Permission.audio.request();
-        }
-        if (audioStatus.isGranted) return true;
+        final audioStatus = await Permission.audio.request();
+        return audioStatus.isGranted;
       } else if (sdkInt >= 30) {
-        var manageStatus = await Permission.manageExternalStorage.status;
-        if (!manageStatus.isGranted) {
-          manageStatus = await Permission.manageExternalStorage.request();
-        }
-        if (manageStatus.isGranted) return true;
+        final manageStatus = await Permission.manageExternalStorage.request();
+        return manageStatus.isGranted;
       } else {
-        var storageStatus = await Permission.storage.status;
-        if (!storageStatus.isGranted) {
-          storageStatus = await Permission.storage.request();
-        }
-        if (storageStatus.isGranted) return true;
-      }
-
-      if (await Permission.storage.isPermanentlyDenied ||
-          await Permission.manageExternalStorage.isPermanentlyDenied ||
-          await Permission.audio.isPermanentlyDenied) {
-        openAppSettings();
+        final storageStatus = await Permission.storage.request();
+        return storageStatus.isGranted;
       }
     }
-    return false;
+    return true;
   }
 
   Future<void> _initializePlayer() async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
 
-    final prefs = await SharedPreferences.getInstance();
-
-    final cachedFavorites = prefs.getStringList(_favoritesCacheKey);
+    final cachedFavorites = _box.get(_favoritesCacheKey);
     if (cachedFavorites != null) {
-      _favorites = cachedFavorites.toSet();
+      _favorites = Set<String>.from(cachedFavorites);
     }
 
-    final cachedPaths = prefs.getStringList(_cacheKey);
+    final cachedPaths = _box.get(_cacheKey);
     if (cachedPaths != null && cachedPaths.isNotEmpty) {
-      _playlist = cachedPaths.map((path) => File(path)).toList();
-      _loading = false;
-      notifyListeners();
-
-      if (await _requestPermissions()) {
-        if (_playlist.isNotEmpty) {
-          setCurrentIndex(0); // triggers play and fetch album art
-        }
-      } else {
-        _showPermissionDenied();
-      }
+      _playlist = (cachedPaths as List).map((path) => File(path)).toList();
     } else {
-      if (await _requestPermissions()) {
-        await _scanAndCacheSongs();
-        if (_playlist.isNotEmpty) {
-          setCurrentIndex(0); // triggers play and fetch album art
-        }
-      } else {
-        _showPermissionDenied();
-      }
-    }
-  }
-
-  void _showPermissionDenied() {
-    _loading = false;
-    notifyListeners();
-  }
-
-  Future<void> _scanAndCacheSongs() async {
-    _loading = true;
-    notifyListeners();
-
-    List<File> foundSongs = [];
-
-    List<String> searchDirs = [
-      '/storage/emulated/0/Music',
-      '/storage/emulated/0/Download',
-      '/storage/emulated/0/Audio',
-    ];
-
-    for (String path in searchDirs) {
-      final dir = Directory(path);
-      if (await dir.exists()) {
-        final files = await _getFilesRecursive(dir);
-        foundSongs.addAll(files);
-      }
+      await _scanAndCacheSongs();
     }
 
-    final uniquePaths = <String>{};
-    foundSongs = foundSongs.where((f) => uniquePaths.add(f.path)).toList();
-    foundSongs.sort((a, b) => a.path.compareTo(b.path));
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      _cacheKey,
-      foundSongs.map((f) => f.path).toList(),
-    );
-
-    _playlist = foundSongs;
-    _loading = false;
-    notifyListeners();
-
-    log("Found ${_playlist.length} songs.");
-  }
-
-  Future<List<File>> _getFilesRecursive(Directory dir) async {
-    List<File> files = [];
-    try {
-      await for (var entity in dir.list(recursive: true, followLinks: false)) {
-        if (entity is File && entity.path.toLowerCase().endsWith('.mp3')) {
-          files.add(entity);
-        }
-      }
-    } catch (e) {
-      log("Error scanning ${dir.path}: $e");
-    }
-    return files;
-  }
-
-  void _handleSongComplete() {
     if (_playlist.isNotEmpty) {
-      _currentIndex = (_currentIndex + 1) % _playlist.length;
-      setCurrentIndex(_currentIndex);
+      if (_isShuffling) {
+        final randomIndex =
+            DateTime.now().millisecondsSinceEpoch % _playlist.length;
+        setCurrentIndex(randomIndex);
+      } else {
+        final savedIndex = _box.get(_currentIndexKey, defaultValue: 0) as int;
+        setCurrentIndex(savedIndex.clamp(0, _playlist.length - 1));
+      }
     }
+
+    _loading = false;
+    notifyListeners();
+  }
+
+  Future<void> setCurrentIndex(int index) async {
+    if (index < 0 || index >= _playlist.length) return;
+
+    _currentIndex = index;
+    await _box.put(_currentIndexKey, index);
+
+    await fetchAlbumArtForCurrent(_playlist[index].path);
+    await _playCurrent();
   }
 
   Future<void> _playCurrent() async {
-    if (_playlist.isEmpty) return;
-
     try {
       await _player.setFilePath(_playlist[_currentIndex].path);
       await _player.seek(Duration.zero);
       await _player.setLoopMode(_isRepeating ? LoopMode.one : LoopMode.off);
       await _player.play();
-      notifyListeners();
       _scrollToCurrentSong();
+      notifyListeners();
     } catch (e) {
       log("Playback error: $e");
       next();
     }
   }
 
-  Future<void> stop() async {
-    await _player.stop();
-    await _player.seek(Duration.zero);
+  Future<void> fetchAlbumArtForCurrent(String path) async {
+    _albumArtBytes = await _extractAlbumArtBytes(path);
+    _albumArtImageProvider =
+        _albumArtBytes != null ? MemoryImage(_albumArtBytes!) : null;
     notifyListeners();
+  }
+
+  Future<Uint8List?> _extractAlbumArtBytes(String path) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final coverPath = '${tempDir.path}/cover.jpg';
+      final coverFile = File(coverPath);
+      if (await coverFile.exists()) await coverFile.delete();
+
+      final session = await FFmpegKit.execute(
+        '-i "$path" -an -vcodec copy "$coverPath"',
+      );
+      final returnCode = await session.getReturnCode();
+      if (returnCode?.isValueSuccess() == true && await coverFile.exists()) {
+        return await coverFile.readAsBytes();
+      }
+    } catch (e) {
+      log("FFmpeg album art error: $e");
+    }
+    return null;
+  }
+
+  void _handleSongComplete() {
+    _isRepeating ? _player.seek(Duration.zero) : next();
+    if (_isRepeating) _player.play();
   }
 
   void _scrollToCurrentSong() {
@@ -297,18 +213,17 @@ class MusicProvider extends ChangeNotifier {
 
   void next() {
     if (_playlist.isEmpty) return;
-    if (_isShuffling) {
-      _currentIndex = DateTime.now().millisecondsSinceEpoch % _playlist.length;
-    } else {
-      _currentIndex = (_currentIndex + 1) % _playlist.length;
-    }
-    setCurrentIndex(_currentIndex);
+    final nextIndex =
+        _isShuffling
+            ? DateTime.now().millisecondsSinceEpoch % _playlist.length
+            : (_currentIndex + 1) % _playlist.length;
+    setCurrentIndex(nextIndex);
   }
 
   void previous() {
     if (_playlist.isEmpty) return;
-    _currentIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
-    setCurrentIndex(_currentIndex);
+    final prevIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
+    setCurrentIndex(prevIndex);
   }
 
   void toggleRepeat() {
@@ -317,9 +232,53 @@ class MusicProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleShuffle() {
+  void toggleShuffle() async {
     _isShuffling = !_isShuffling;
+    await _box.put(_shuffleKey, _isShuffling);
     notifyListeners();
+  }
+
+  Future<void> _scanAndCacheSongs() async {
+    _loading = true;
+    notifyListeners();
+
+    final List<File> foundSongs = [];
+    const searchDirs = [
+      '/storage/emulated/0/Music',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Audio',
+    ];
+
+    for (final path in searchDirs) {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        foundSongs.addAll(await _getFilesRecursive(dir));
+      }
+    }
+
+    final uniquePaths = <String>{};
+    final filtered = foundSongs.where((f) => uniquePaths.add(f.path)).toList();
+    filtered.sort((a, b) => a.path.compareTo(b.path));
+
+    await _box.put(_cacheKey, filtered.map((f) => f.path).toList());
+
+    _playlist = filtered;
+    _loading = false;
+    notifyListeners();
+  }
+
+  Future<List<File>> _getFilesRecursive(Directory dir) async {
+    final List<File> files = [];
+    try {
+      await for (var entity in dir.list(recursive: true)) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.mp3')) {
+          files.add(entity);
+        }
+      }
+    } catch (e) {
+      log("Directory scan error: $e");
+    }
+    return files;
   }
 
   Future<void> refreshSongs() async {
@@ -329,18 +288,6 @@ class MusicProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> saveFavorites() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_favoritesCacheKey, _favorites.toList());
-  }
-
-  String formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
-  }
-
   void updateSearchQuery(String query) {
     _searchQuery = query;
     notifyListeners();
@@ -348,9 +295,7 @@ class MusicProvider extends ChangeNotifier {
 
   void toggleSearching(bool searching) {
     _isSearching = searching;
-    if (!searching) {
-      _searchQuery = '';
-    }
+    if (!searching) _searchQuery = '';
     notifyListeners();
   }
 
@@ -366,34 +311,19 @@ class MusicProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Fetch album art using metadata_god package
-  Future<String?> fetchAlbumArtUrlFor(String path) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final coverPath = '${tempDir.path}/cover.jpg';
+  Future<void> saveFavorites() async {
+    await _box.put(_favoritesCacheKey, _favorites.toList());
+  }
 
-      // Remove if already exists
-      final coverFile = File(coverPath);
-      if (await coverFile.exists()) {
-        await coverFile.delete();
-      }
+  String formatDuration(Duration duration) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(duration.inMinutes.remainder(60))}:${two(duration.inSeconds.remainder(60))}';
+  }
 
-      final command = "-i \"$path\" -an -vcodec copy \"$coverPath\"";
-
-      final session = await FFmpegKit.execute(command);
-      final returnCode = await session.getReturnCode();
-
-      if (returnCode!.isValueSuccess()) {
-        final bytes = await coverFile.readAsBytes();
-        final base64Image = base64Encode(bytes);
-        return 'data:image/jpeg;base64,$base64Image';
-      } else {
-        log("FFmpeg failed with code: $returnCode");
-      }
-    } catch (e) {
-      log("FFmpeg album art extract error: $e");
-    }
-    return null;
+  Future<void> stop() async {
+    await _player.stop();
+    await _player.seek(Duration.zero);
+    notifyListeners();
   }
 
   @override
@@ -401,6 +331,7 @@ class MusicProvider extends ChangeNotifier {
     _player.dispose();
     scrollController.dispose();
     searchController.dispose();
+    _box.close();
     super.dispose();
   }
 }
