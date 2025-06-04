@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:retrowave/sreens/onboarding_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:retrowave/home.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -26,11 +28,21 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MusicHomePage()),
-      );
+    Future.delayed(const Duration(seconds: 2), () async {
+      final prefs = await SharedPreferences.getInstance();
+      final showOnboarding = !(prefs.getBool('onboarding_complete') ?? false);
+
+      if (showOnboarding) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MusicHomePage()),
+        );
+      }
     });
   }
 
@@ -42,32 +54,27 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      backgroundColor: Colors.grey[300],
-      body: Container(
-        decoration: const BoxDecoration(),
-        child: Center(
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Text(
-                  'm e l o',
-                  style: TextStyle(
-                    fontSize: 48,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black, // Use black for text
-                    letterSpacing: 8,
-                    fontFamily: 'Courier', // Customize font if needed
-                  ),
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: Center(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'm e l o',
+                style: TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w100,
+                  color: theme.textTheme.bodyLarge?.color,
+                  letterSpacing: 8,
+                  fontFamily: 'Courier',
                 ),
-                SizedBox(height: 20),
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

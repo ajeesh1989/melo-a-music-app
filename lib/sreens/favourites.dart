@@ -24,6 +24,9 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   late List<File> favoriteSongs;
+  late List<File> filteredSongs;
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -32,24 +35,46 @@ class _FavoritesPageState extends State<FavoritesPage> {
         widget.allSongs
             .where((f) => widget.favorites.contains(f.path))
             .toList();
+    filteredSongs = List.from(favoriteSongs);
+
+    _searchController.addListener(() {
+      final query = _searchController.text.toLowerCase();
+      setState(() {
+        filteredSongs =
+            favoriteSongs
+                .where((song) => song.path.toLowerCase().contains(query))
+                .toList();
+      });
+    });
   }
 
   void _removeFromFavorites(String path) {
     setState(() {
       widget.onToggleFavorite(path);
       favoriteSongs.removeWhere((file) => file.path == path);
+      filteredSongs.removeWhere((file) => file.path == path);
     });
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? Colors.grey[900] : Colors.grey[300];
+    final textColor = isDark ? Colors.white : Colors.black;
+    final iconColor = isDark ? Colors.white54 : Colors.black26;
+    final fadedText = isDark ? Colors.white70 : Colors.black54;
+
     return Scaffold(
-      backgroundColor: Colors.grey[300],
+      backgroundColor: bgColor,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 25.0,
-          ), // same as SongPage
+          padding: const EdgeInsets.symmetric(horizontal: 25.0),
           child: Column(
             children: [
               const SizedBox(height: 10),
@@ -64,53 +89,100 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         onTap: () {
                           Navigator.pop(context);
                         },
-                        child: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.black26,
-                        ),
+                        child: Icon(Icons.arrow_back, color: iconColor),
                       ),
                     ),
                   ),
-                  const Text(
-                    'F A V O U R I T E S',
-                    style: TextStyle(color: Colors.black),
+                  Expanded(
+                    // wrap text / textfield inside Expanded so it takes available space proportionally
+                    child:
+                        _isSearching
+                            ? SizedBox(
+                              height: 45,
+                              child: TextField(
+                                controller: _searchController,
+                                style: TextStyle(color: textColor),
+                                autofocus: true,
+                                decoration: InputDecoration(
+                                  hintText: 'Search favorites...',
+                                  hintStyle: TextStyle(color: fadedText),
+                                  filled: true,
+                                  fillColor:
+                                      isDark
+                                          ? Colors.grey[800]
+                                          : Colors.grey[100],
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  // suffixIcon: IconButton(
+                                  //   icon: Icon(Icons.clear, color: iconColor),
+                                  //   onPressed: () {
+                                  //     setState(() {
+                                  //       _searchController.clear();
+                                  //       _isSearching = false;
+                                  //       filteredSongs = List.from(
+                                  //         favoriteSongs,
+                                  //       );
+                                  //     });
+                                  //   },
+                                  // ),
+                                ),
+                              ),
+                            )
+                            : Text(
+                              'F A V O U R I T E',
+                              style: TextStyle(
+                                color:
+                                    Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.grey.shade500
+                                        : Colors.grey.shade900,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                   ),
                   SizedBox(
                     height: 60,
                     width: 60,
                     child: NeuBox(
                       child: IconButton(
-                        icon: const Icon(Icons.menu, color: Colors.black26),
+                        icon: Icon(
+                          _isSearching ? Icons.close : Icons.search,
+                          color: iconColor,
+                        ),
                         onPressed: () {
-                          // Optional: open a drawer or menu
+                          setState(() {
+                            _isSearching = !_isSearching;
+                            if (!_isSearching) {
+                              _searchController.clear();
+                              filteredSongs = List.from(favoriteSongs);
+                            }
+                          });
                         },
                       ),
                     ),
                   ),
                 ],
               ),
+
               const SizedBox(height: 15),
               Expanded(
                 child:
-                    favoriteSongs.isEmpty
+                    filteredSongs.isEmpty
                         ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'No favorites yet.',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.black54,
-                                ),
-                              ),
-                            ],
+                          child: Text(
+                            'No favorites found.',
+                            style: TextStyle(fontSize: 16, color: fadedText),
                           ),
                         )
                         : ListView.builder(
-                          itemCount: favoriteSongs.length,
+                          itemCount: filteredSongs.length,
                           itemBuilder: (context, index) {
-                            final file = favoriteSongs[index];
+                            final file = filteredSongs[index];
                             final fileName = file.path.split('/').last;
 
                             return Padding(
@@ -119,15 +191,15 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                 child: ListTile(
                                   title: Text(
                                     '${index + 1}. $fileName',
-                                    style: const TextStyle(
-                                      color: Colors.black,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: TextStyle(color: textColor),
                                   ),
                                   trailing: IconButton(
-                                    icon: const Icon(
+                                    icon: Icon(
                                       Icons.favorite,
-                                      color: Colors.grey,
+                                      color:
+                                          isDark
+                                              ? Colors.white54
+                                              : Colors.grey[700],
                                     ),
                                     onPressed:
                                         () => _removeFromFavorites(file.path),

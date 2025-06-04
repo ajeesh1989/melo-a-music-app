@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:developer';
 import 'dart:typed_data';
@@ -10,6 +11,7 @@ import 'package:hive/hive.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:retrowave/model/song_data_model.dart';
 
 // Don't forget to initialize Hive in your app main() before using MusicProvider:
 // await Hive.initFlutter();
@@ -31,7 +33,6 @@ class MusicProvider extends ChangeNotifier {
   final TextEditingController searchController = TextEditingController();
 
   String _searchQuery = '';
-  bool _isSearching = false;
 
   static const String _cacheKey = "cached_song_paths";
   static const String _favoritesCacheKey = "cached_favorites";
@@ -39,6 +40,136 @@ class MusicProvider extends ChangeNotifier {
   static const String _currentIndexKey = "current_song_index";
 
   Set<String> _favorites = {};
+
+  // -==========
+  Timer? _sleepTimer;
+  Timer? _countdownTimer;
+  Duration _remaining = Duration.zero;
+
+  Duration get remainingTime => _remaining;
+
+  // New getter to check if timer is running
+  bool get isTimerActive => _remaining > Duration.zero;
+
+  bool get isSleepTimerActive => _sleepTimer?.isActive ?? false;
+
+  void startSleepTimer(Duration duration) {
+    _sleepTimer?.cancel();
+    _countdownTimer?.cancel();
+
+    _remaining = duration;
+    notifyListeners();
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remaining.inSeconds <= 1) {
+        timer.cancel();
+        _remaining = Duration.zero; // Ensure remaining is zero at end
+        notifyListeners();
+      } else {
+        _remaining -= const Duration(seconds: 1);
+        notifyListeners();
+      }
+    });
+
+    _sleepTimer = Timer(duration, () {
+      quitApp();
+    });
+  }
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _countdownTimer?.cancel();
+    _remaining = Duration.zero;
+    notifyListeners();
+  }
+
+  void quitApp() {
+    exit(0);
+  }
+
+  final Map<String, SongMetadata> _metadataMap = {};
+
+  Future<SongMetadata?> _extractMetadata(String filePath) async {
+    try {
+      final session = await FFmpegKit.execute('-i "$filePath" -f ffmetadata -');
+      final output = await session.getAllLogs();
+      final logString = output.map((e) => e.getMessage()).join('\n');
+
+      final genreMatch = RegExp(r'genre\s*=\s*(.*)').firstMatch(logString);
+      final artistMatch = RegExp(r'artist\s*=\s*(.*)').firstMatch(logString);
+      final languageMatch = RegExp(
+        r'language\s*=\s*(.*)',
+      ).firstMatch(logString);
+
+      final genre = genreMatch?.group(1)?.trim();
+      final artist = artistMatch?.group(1)?.trim();
+      final language = languageMatch?.group(1)?.trim();
+      final folder = File(filePath).parent.path.split('/').last;
+
+      return SongMetadata(
+        genre: genre,
+        artist: artist,
+        language: language,
+        folder: folder,
+      );
+    } catch (e) {
+      log("Metadata extract error: $e");
+      return null;
+    }
+  }
+
+  Future<void> loadMetadataForPlaylist() async {
+    _metadataMap.clear();
+    for (var file in _playlist) {
+      final meta = await _extractMetadata(file.path);
+      if (meta != null) {
+        _metadataMap[file.path] = meta;
+      }
+    }
+    notifyListeners();
+  }
+
+  Map<String, List<File>> get genreMap {
+    final map = <String, List<File>>{};
+    for (var file in _playlist) {
+      final meta = _metadataMap[file.path];
+      final key = (meta?.genre?.isNotEmpty == true) ? meta!.genre! : 'Unknown';
+      map.putIfAbsent(key, () => []).add(file);
+    }
+    return map;
+  }
+
+  Map<String, List<File>> get artistMap {
+    final map = <String, List<File>>{};
+    for (var file in _playlist) {
+      final meta = _metadataMap[file.path];
+      final key =
+          (meta?.artist?.isNotEmpty == true) ? meta!.artist! : 'Unknown';
+      map.putIfAbsent(key, () => []).add(file);
+    }
+    return map;
+  }
+
+  Map<String, List<File>> get languageMap {
+    final map = <String, List<File>>{};
+    for (var file in _playlist) {
+      final meta = _metadataMap[file.path];
+      final key =
+          (meta?.language?.isNotEmpty == true) ? meta!.language! : 'Unknown';
+      map.putIfAbsent(key, () => []).add(file);
+    }
+    return map;
+  }
+
+  Map<String, List<File>> get folderMap {
+    final map = <String, List<File>>{};
+    for (var file in _playlist) {
+      final meta = _metadataMap[file.path];
+      final key = meta?.folder ?? 'Unknown';
+      map.putIfAbsent(key, () => []).add(file);
+    }
+    return map;
+  }
 
   List<File> get playlist => List.unmodifiable(_playlist);
   int get currentIndex => _currentIndex;
@@ -256,6 +387,7 @@ class MusicProvider extends ChangeNotifier {
       }
     }
 
+    // Remove duplicates by file path
     final uniquePaths = <String>{};
     final filtered = foundSongs.where((f) => uniquePaths.add(f.path)).toList();
     filtered.sort((a, b) => a.path.compareTo(b.path));
@@ -294,7 +426,6 @@ class MusicProvider extends ChangeNotifier {
   }
 
   void toggleSearching(bool searching) {
-    _isSearching = searching;
     if (!searching) _searchQuery = '';
     notifyListeners();
   }

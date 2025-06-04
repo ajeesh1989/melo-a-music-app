@@ -50,14 +50,19 @@ class SongPage extends StatelessWidget {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color:
+                            Theme.of(context).brightness == Brightness.dark
+                                ? Colors.grey.shade900
+                                : Colors.grey.shade300,
                         borderRadius: BorderRadius.circular(30),
                       ),
+
                       child: Center(
                         child: Text(
                           message,
                           style: TextStyle(
-                            color: Colors.grey[900],
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -95,49 +100,14 @@ class SongPage extends StatelessWidget {
       });
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: Colors.grey[300],
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            const DrawerHeader(
-              decoration: BoxDecoration(color: Colors.green),
-              child: Text(
-                'Menu',
-                style: TextStyle(color: Colors.white, fontSize: 24),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.favorite),
-              title: const Text('Favorites'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder:
-                        (context) => FavoritesPage(
-                          favorites: music.favorites,
-                          allSongs: music.filteredPlaylist,
-                          onToggleFavorite: music.toggleFavorite,
-                          onPlaySong: (path) {
-                            final idx = music.playlist.indexWhere(
-                              (f) => f.path == path,
-                            );
-                            if (idx != -1) {
-                              music.setCurrentIndex(idx);
-                              music.player.play();
-                            }
-                          },
-                        ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
+      backgroundColor:
+          Theme.of(context).brightness == Brightness.dark
+              ? Colors.grey.shade900
+              : Colors.grey.shade300,
+
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 25.0),
@@ -188,56 +158,65 @@ class SongPage extends StatelessWidget {
                                     () => Navigator.of(
                                       context,
                                     ).popUntil((route) => route.isFirst),
-                                child: const Icon(
+                                child: Icon(
                                   Icons.expand_more,
-                                  color: Colors.black26,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey.shade600
+                                          : Colors.grey.shade500,
                                 ),
                               ),
                             ),
                           ),
-                          const Text(
+
+                          Text(
                             'P L A Y L I S T',
-                            style: TextStyle(color: Colors.black),
+                            style: TextStyle(
+                              color:
+                                  Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey.shade500
+                                      : Colors.grey.shade900,
+                            ),
                           ),
                           SizedBox(
                             height: 60,
                             width: 60,
                             child: NeuBox(
-                              child: Builder(
-                                builder:
-                                    (context) => IconButton(
-                                      icon: const Icon(
-                                        Icons.favorite,
-                                        color: Colors.black26,
-                                      ),
-                                      onPressed: () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder:
-                                                (context) => FavoritesPage(
-                                                  favorites: music.favorites,
-                                                  allSongs:
-                                                      music.filteredPlaylist,
-                                                  onToggleFavorite:
-                                                      music.toggleFavorite,
-                                                  onPlaySong: (path) {
-                                                    final idx = music.playlist
-                                                        .indexWhere(
-                                                          (f) => f.path == path,
-                                                        );
-                                                    if (idx != -1) {
-                                                      music.setCurrentIndex(
-                                                        idx,
-                                                      );
-                                                      music.player.play();
-                                                    }
-                                                  },
-                                                ),
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.favorite,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.grey.shade600
+                                          : Colors.grey.shade500,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => FavoritesPage(
+                                            favorites: music.favorites,
+                                            allSongs: music.filteredPlaylist,
+                                            onToggleFavorite:
+                                                music.toggleFavorite,
+                                            onPlaySong: (path) {
+                                              final idx = music.playlist
+                                                  .indexWhere(
+                                                    (f) => f.path == path,
+                                                  );
+                                              if (idx != -1) {
+                                                music.setCurrentIndex(idx);
+                                                music.player.play();
+                                              }
+                                            },
                                           ),
-                                        );
-                                      },
                                     ),
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -262,17 +241,12 @@ class SongPage extends StatelessWidget {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        const Text(
+                                        Text(
                                           'Now Playing 🎵',
                                           style: TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 17,
-                                            color: Color.fromARGB(
-                                              255,
-                                              136,
-                                              126,
-                                              126,
-                                            ),
+                                            color: colorScheme.outline,
                                           ),
                                         ),
                                         const SizedBox(height: 6),
@@ -280,9 +254,15 @@ class SongPage extends StatelessWidget {
                                           height: 24,
                                           child: Marquee(
                                             text: fileName,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.bold,
-                                              color: Colors.black,
+                                              color:
+                                                  Theme.of(
+                                                            context,
+                                                          ).brightness ==
+                                                          Brightness.dark
+                                                      ? Colors.cyan
+                                                      : Colors.grey.shade800,
                                               fontSize: 18,
                                             ),
                                             blankSpace: 50,
@@ -305,9 +285,15 @@ class SongPage extends StatelessWidget {
                                         color:
                                             music.isFavorite(currentSongPath)
                                                 ? Colors.grey
-                                                : Colors.black26,
+                                                : Theme.of(
+                                                      context,
+                                                    ).brightness ==
+                                                    Brightness.dark
+                                                ? Colors.grey.shade300
+                                                : Colors.grey.shade500,
                                         size: 25,
                                       ),
+
                                       onPressed: () {
                                         music.toggleFavorite(currentSongPath);
                                         showActionPopup(
@@ -331,12 +317,18 @@ class SongPage extends StatelessWidget {
                         children: [
                           Text(
                             formatDuration(currentPos),
-                            style: const TextStyle(color: Colors.black),
+                            style: TextStyle(color: colorScheme.onSurface),
                           ),
                           IconButton(
                             icon: Icon(
                               Icons.shuffle,
-                              color: music.isShuffling ? Colors.black : null,
+                              color:
+                                  music.isShuffling
+                                      ? Colors.cyan
+                                      : Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey.shade500
+                                      : Colors.grey.shade500,
                             ),
                             tooltip: "Shuffle",
                             onPressed: () {
@@ -354,7 +346,13 @@ class SongPage extends StatelessWidget {
                               music.isRepeating
                                   ? Icons.repeat_one
                                   : Icons.repeat,
-                              color: music.isRepeating ? Colors.black : null,
+                              color:
+                                  music.isRepeating
+                                      ? Colors.cyan
+                                      : Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey.shade500
+                                      : Colors.grey.shade500,
                             ),
                             onPressed: () {
                               music.toggleRepeat();
@@ -364,9 +362,10 @@ class SongPage extends StatelessWidget {
                               );
                             },
                           ),
+
                           Text(
                             formatDuration(totalDuration),
-                            style: const TextStyle(color: Colors.black),
+                            style: TextStyle(color: colorScheme.onSurface),
                           ),
                         ],
                       ),
@@ -379,13 +378,20 @@ class SongPage extends StatelessWidget {
                               currentPos.inMilliseconds
                                   .clamp(0, totalDuration.inMilliseconds)
                                   .toDouble(),
-                          activeColor: const Color.fromARGB(255, 59, 147, 61),
-                          inactiveColor: Colors.grey[400],
+                          activeColor:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.cyan.shade800
+                                  : Colors.grey.shade500,
+                          inactiveColor:
+                              Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.grey.shade800
+                                  : Colors.grey.shade400,
                           onChanged: (value) {
                             player.seek(Duration(milliseconds: value.toInt()));
                           },
                         ),
                       ),
+
                       const SizedBox(height: 15),
                       SizedBox(
                         height: 75,
@@ -394,9 +400,13 @@ class SongPage extends StatelessWidget {
                             Expanded(
                               child: NeuBox(
                                 child: IconButton(
-                                  icon: const Icon(
+                                  icon: Icon(
                                     Icons.skip_previous,
-                                    color: Colors.black54,
+                                    color:
+                                        Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.grey.shade500
+                                            : Colors.grey.shade600,
                                     size: 30,
                                   ),
                                   onPressed: music.previous,
@@ -411,7 +421,11 @@ class SongPage extends StatelessWidget {
                                     player.playing
                                         ? Icons.pause
                                         : Icons.play_arrow,
-                                    color: Colors.black54,
+                                    color:
+                                        Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.grey.shade500
+                                            : Colors.grey.shade600,
                                     size: 30,
                                   ),
                                   onPressed: () {
@@ -427,10 +441,14 @@ class SongPage extends StatelessWidget {
                             Expanded(
                               child: NeuBox(
                                 child: IconButton(
-                                  icon: const Icon(
+                                  icon: Icon(
                                     Icons.skip_next,
                                     size: 30,
-                                    color: Colors.black54,
+                                    color:
+                                        Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.grey.shade500
+                                            : Colors.grey.shade600,
                                   ),
                                   onPressed: music.next,
                                 ),
