@@ -121,7 +121,7 @@ class _MusicHomePageState extends State<MusicHomePage> {
                   "Set Timer",
                   style: TextStyle(
                     color: theme.textTheme.bodyLarge?.color,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 onPressed: () {
@@ -131,19 +131,12 @@ class _MusicHomePageState extends State<MusicHomePage> {
                     SnackBar(
                       content: Text(
                         "Sleep timer set for $selectedMinutes minutes",
-                        style: TextStyle(
-                          color:
-                              theme.snackBarTheme.contentTextStyle?.color ??
-                              Colors.white,
-                        ),
                       ),
-                      backgroundColor:
-                          theme.snackBarTheme.backgroundColor ??
-                          theme.primaryColor,
                     ),
                   );
                 },
               ),
+              SizedBox(height: 5),
             ],
           ),
         );
@@ -195,7 +188,7 @@ class _MusicHomePageState extends State<MusicHomePage> {
               },
             ),
             SimpleDialogOption(
-              child: const Text("Custom Time"),
+              child: const Text("Custom Timer"),
               onPressed: () {
                 Navigator.pop(context);
                 _showCustomSleepTimerPicker(context, provider);
@@ -487,12 +480,88 @@ class _MusicHomePageState extends State<MusicHomePage> {
                                         .toString()
                                         .padLeft(2, '0');
 
-                                    return Text(
-                                      '$minutes:$seconds',
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w400,
+                                    return NeuBox(
+                                      child: SizedBox(
+                                        height: 45,
+                                        width: 180, // adjust as needed
+                                        child: Stack(
+                                          children: [
+                                            Center(
+                                              child: Text(
+                                                '$minutes:$seconds',
+                                                style: TextStyle(
+                                                  color: textColor,
+                                                  fontSize: 35,
+                                                  fontWeight: FontWeight.w300,
+                                                ),
+                                              ),
+                                            ),
+                                            Positioned(
+                                              top: 0,
+                                              right: 0,
+                                              left: 140,
+                                              bottom: 25,
+                                              child: IconButton(
+                                                padding: EdgeInsets.zero,
+                                                constraints:
+                                                    const BoxConstraints(),
+                                                icon: const Icon(
+                                                  Icons.close,
+                                                  size: 12,
+                                                ),
+                                                onPressed: () {
+                                                  showDialog(
+                                                    context: context,
+                                                    builder:
+                                                        (
+                                                          context,
+                                                        ) => AlertDialog(
+                                                          title: const Text(
+                                                            "Cancel Sleep Timer?",
+                                                          ),
+                                                          content: const Text(
+                                                            "Are you sure you want to cancel the sleep timer?",
+                                                          ),
+                                                          actions: [
+                                                            TextButton(
+                                                              onPressed:
+                                                                  () =>
+                                                                      Navigator.pop(
+                                                                        context,
+                                                                      ),
+                                                              child: const Text(
+                                                                "No",
+                                                              ),
+                                                            ),
+                                                            TextButton(
+                                                              onPressed: () {
+                                                                provider
+                                                                    .cancelSleepTimer();
+                                                                Navigator.pop(
+                                                                  context,
+                                                                );
+                                                                ScaffoldMessenger.of(
+                                                                  context,
+                                                                ).showSnackBar(
+                                                                  const SnackBar(
+                                                                    content: Text(
+                                                                      "Sleep timer canceled",
+                                                                    ),
+                                                                  ),
+                                                                );
+                                                              },
+                                                              child: const Text(
+                                                                "Yes",
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     );
                                   } else {
