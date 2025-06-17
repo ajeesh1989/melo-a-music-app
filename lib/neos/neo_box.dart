@@ -20,7 +20,7 @@ class NeuBox extends StatelessWidget {
                   ? [
                     BoxShadow(
                       // ignore: deprecated_member_use
-                      color: Colors.black.withOpacity(0.7),
+                      color: Colors.black.withOpacity(0.5),
                       offset: const Offset(5, 5),
                       blurRadius: 10,
                     ),

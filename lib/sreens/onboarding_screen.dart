@@ -24,7 +24,7 @@ class OnboardingScreen extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.start,
       children: [
         SizedBox(
-          height: 500, // fix height for Lottie animation
+          height: 450, // fix height for Lottie animation
           child: Lottie.asset(lottieAsset, fit: BoxFit.contain),
         ),
         const SizedBox(height: 24),

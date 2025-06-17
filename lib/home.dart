@@ -416,7 +416,7 @@ class _MusicHomePageState extends State<MusicHomePage> {
 
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
+          padding: const EdgeInsets.symmetric(horizontal: 15.0),
           child: Column(
             children: [
               const SizedBox(height: 10),
@@ -539,8 +539,8 @@ class _MusicHomePageState extends State<MusicHomePage> {
                           _showSearch ? Icons.close : Icons.search,
                           color:
                               Theme.of(context).brightness == Brightness.light
-                                  ? Colors.black
-                                  : Colors.white,
+                                  ? Colors.black26
+                                  : Colors.white54,
                         ),
                         tooltip: "Toggle Search",
                         onPressed: () {
@@ -687,35 +687,62 @@ class _MusicHomePageState extends State<MusicHomePage> {
                                               : Colors.grey[400]),
                                   size: 28,
                                 ),
-                                title: Text(
-                                  file.path.split('/').last,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight:
-                                        isCurrent
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                    color:
-                                        isCurrent
-                                            ? (Theme.of(context).brightness ==
-                                                    Brightness.light
-                                                ? const Color.fromARGB(
-                                                  255,
-                                                  27,
-                                                  28,
-                                                  27,
-                                                )
-                                                : Colors.cyan)
-                                            : (Theme.of(context).brightness ==
-                                                    Brightness.light
-                                                ? Colors.grey[800]
-                                                : Colors.grey[300]),
-                                    fontStyle:
-                                        isCurrent
-                                            ? FontStyle.italic
-                                            : FontStyle.normal,
-                                  ),
-                                ),
+                                title:
+                                    isCurrent
+                                        ? SizedBox(
+                                          height:
+                                              20, // Adjust height to fit your design
+                                          child: Marquee(
+                                            text: file.path.split('/').last,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w600,
+                                              fontStyle: FontStyle.italic,
+                                              color:
+                                                  Theme.of(
+                                                            context,
+                                                          ).brightness ==
+                                                          Brightness.light
+                                                      ? const Color.fromARGB(
+                                                        255,
+                                                        27,
+                                                        28,
+                                                        27,
+                                                      )
+                                                      : Colors.cyan,
+                                            ),
+                                            scrollAxis: Axis.horizontal,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            blankSpace: 30.0,
+                                            velocity: 25.0,
+                                            pauseAfterRound: Duration(
+                                              seconds: 1,
+                                            ),
+                                            startPadding: 10.0,
+                                            accelerationDuration: Duration(
+                                              seconds: 1,
+                                            ),
+                                            accelerationCurve: Curves.linear,
+                                            decelerationDuration: Duration(
+                                              milliseconds: 500,
+                                            ),
+                                            decelerationCurve: Curves.easeOut,
+                                          ),
+                                        )
+                                        : Text(
+                                          file.path.split('/').last,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.normal,
+                                            fontStyle: FontStyle.normal,
+                                            color:
+                                                Theme.of(context).brightness ==
+                                                        Brightness.light
+                                                    ? Colors.grey[700]
+                                                    : Colors.grey[300],
+                                          ),
+                                        ),
+
                                 onTap: () {
                                   final indexInPlaylist = music.playlist
                                       .indexWhere((f) => f.path == file.path);
@@ -1026,7 +1053,12 @@ class _MusicHomePageState extends State<MusicHomePage> {
                                                                 context,
                                                               ).brightness ==
                                                               Brightness.light
-                                                          ? Colors.grey[500]
+                                                          ? const Color.fromARGB(
+                                                            255,
+                                                            59,
+                                                            147,
+                                                            61,
+                                                          )
                                                           : Colors
                                                               .cyan
                                                               .shade800,

@@ -284,16 +284,25 @@ class SongPage extends StatelessWidget {
                                             : Icons.favorite_border,
                                         color:
                                             music.isFavorite(currentSongPath)
-                                                ? Colors.grey
+                                                ? Theme.of(
+                                                          context,
+                                                        ).brightness ==
+                                                        Brightness.dark
+                                                    ? Colors.cyan
+                                                    : const Color.fromARGB(
+                                                      255,
+                                                      59,
+                                                      147,
+                                                      61,
+                                                    )
                                                 : Theme.of(
                                                       context,
                                                     ).brightness ==
                                                     Brightness.dark
-                                                ? Colors.grey.shade300
-                                                : Colors.grey.shade500,
+                                                ? Colors.grey.shade500
+                                                : Colors.grey,
                                         size: 25,
                                       ),
-
                                       onPressed: () {
                                         music.toggleFavorite(currentSongPath);
                                         showActionPopup(
@@ -324,10 +333,15 @@ class SongPage extends StatelessWidget {
                               Icons.shuffle,
                               color:
                                   music.isShuffling
-                                      ? Colors.cyan
-                                      : Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.grey.shade500
+                                      ? Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.cyan
+                                          : const Color.fromARGB(
+                                            255,
+                                            59,
+                                            147,
+                                            61,
+                                          )
                                       : Colors.grey.shade500,
                             ),
                             tooltip: "Shuffle",
@@ -341,6 +355,7 @@ class SongPage extends StatelessWidget {
                               );
                             },
                           ),
+
                           IconButton(
                             icon: Icon(
                               music.isRepeating
@@ -348,12 +363,18 @@ class SongPage extends StatelessWidget {
                                   : Icons.repeat,
                               color:
                                   music.isRepeating
-                                      ? Colors.cyan
-                                      : Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.grey.shade500
+                                      ? Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.cyan
+                                          : const Color.fromARGB(
+                                            255,
+                                            59,
+                                            147,
+                                            61,
+                                          )
                                       : Colors.grey.shade500,
                             ),
+                            tooltip: "Repeat",
                             onPressed: () {
                               music.toggleRepeat();
                               showActionPopup(
@@ -381,7 +402,7 @@ class SongPage extends StatelessWidget {
                           activeColor:
                               Theme.of(context).brightness == Brightness.dark
                                   ? Colors.cyan.shade800
-                                  : Colors.grey.shade500,
+                                  : const Color.fromARGB(255, 59, 147, 61),
                           inactiveColor:
                               Theme.of(context).brightness == Brightness.dark
                                   ? Colors.grey.shade800
