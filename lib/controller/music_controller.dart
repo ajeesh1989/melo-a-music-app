@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:developer';
+import 'dart:developer'; // Already imported for log()
+import 'dart:math' show Random;
 import 'dart:typed_data';
+// <--- NEW: Import for Random class
 
 import 'package:audio_session/audio_session.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -13,10 +15,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:retrowave/model/song_data_model.dart';
 
-// Don't forget to initialize Hive in your app main() before using MusicProvider:
-// await Hive.initFlutter();
+// --- Global Constant for Logging ---
+const String _logTag = 'RETROWAVE_LOG';
 
 class MusicProvider extends ChangeNotifier {
+  // <--- NEW: Random instance for reliable shuffling --->
+  final Random _random = Random();
+
   final AudioPlayer _player = AudioPlayer();
   List<File> _playlist = [];
   int _currentIndex = 0;
@@ -41,7 +46,7 @@ class MusicProvider extends ChangeNotifier {
 
   Set<String> _favorites = {};
 
-  // -==========
+  // -========== Sleep Timer Variables and Getters
   Timer? _sleepTimer;
   Timer? _countdownTimer;
   Duration _remaining = Duration.zero;
@@ -54,6 +59,7 @@ class MusicProvider extends ChangeNotifier {
   bool get isSleepTimerActive => _sleepTimer?.isActive ?? false;
 
   void startSleepTimer(Duration duration) {
+    log('[$_logTag] Starting sleep timer for: $duration');
     _sleepTimer?.cancel();
     _countdownTimer?.cancel();
 
@@ -64,6 +70,7 @@ class MusicProvider extends ChangeNotifier {
       if (_remaining.inSeconds <= 1) {
         timer.cancel();
         _remaining = Duration.zero; // Ensure remaining is zero at end
+        log('[$_logTag] Sleep countdown complete.');
         notifyListeners();
       } else {
         _remaining -= const Duration(seconds: 1);
@@ -72,11 +79,13 @@ class MusicProvider extends ChangeNotifier {
     });
 
     _sleepTimer = Timer(duration, () {
+      log('[$_logTag] Sleep timer finished. Quitting app.');
       quitApp();
     });
   }
 
   void cancelSleepTimer() {
+    log('[$_logTag] Sleep timer cancelled.');
     _sleepTimer?.cancel();
     _countdownTimer?.cancel();
     _remaining = Duration.zero;
@@ -86,6 +95,7 @@ class MusicProvider extends ChangeNotifier {
   void quitApp() {
     exit(0);
   }
+  // -========== End Sleep Timer
 
   final Map<String, SongMetadata> _metadataMap = {};
 
@@ -113,7 +123,7 @@ class MusicProvider extends ChangeNotifier {
         folder: folder,
       );
     } catch (e) {
-      log("Metadata extract error: $e");
+      log('[$_logTag] Metadata extract error: $e');
       return null;
     }
   }
@@ -128,6 +138,8 @@ class MusicProvider extends ChangeNotifier {
     }
     notifyListeners();
   }
+
+  // --- Getters remain the same ---
 
   Map<String, List<File>> get genreMap {
     final map = <String, List<File>>{};
@@ -197,43 +209,66 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    log('[$_logTag] MusicProvider initializing...');
     // Open Hive box (must be called once)
     _box = await Hive.openBox('musicBox');
 
     final granted = await _requestPermissions();
     if (!granted) {
+      log('[$_logTag] Permissions not granted. Loading complete.');
       _loading = false;
       notifyListeners();
       return;
     }
 
     _isShuffling = _box.get(_shuffleKey, defaultValue: false) as bool;
+    log('[$_logTag] Initial Shuffle state loaded: $_isShuffling');
 
     await _initializePlayer();
 
     _player.playerStateStream.listen((state) {
       if (state.playing) _scrollToCurrentSong();
       if (state.processingState == ProcessingState.completed) {
+        log('[$_logTag] Player state completed. Handling song finish.');
         _handleSongComplete();
       }
     });
     player.playingStream.listen((isPlaying) {
       notifyListeners();
     });
+
+    // --- NEW: Listen to loop/shuffle status from just_audio ---
+    // This is less critical since you manually set the mode on play,
+    // but good for completeness.
+    player.loopModeStream.listen((mode) {
+      log('[$_logTag] Player Loop Mode: $mode');
+      _isRepeating = (mode == LoopMode.one);
+      notifyListeners();
+    });
   }
 
   Future<bool> _requestPermissions() async {
+    // ... permission logic remains the same
     if (Platform.isAndroid) {
       final sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
 
       if (sdkInt >= 33) {
         final audioStatus = await Permission.audio.request();
+        log(
+          '[$_logTag] Android 13+ (SDK $sdkInt) Audio permission: ${audioStatus.isGranted}',
+        );
         return audioStatus.isGranted;
       } else if (sdkInt >= 30) {
         final manageStatus = await Permission.manageExternalStorage.request();
+        log(
+          '[$_logTag] Android 11/12 (SDK $sdkInt) Manage Storage permission: ${manageStatus.isGranted}',
+        );
         return manageStatus.isGranted;
       } else {
         final storageStatus = await Permission.storage.request();
+        log(
+          '[$_logTag] Android <11 (SDK $sdkInt) Storage permission: ${storageStatus.isGranted}',
+        );
         return storageStatus.isGranted;
       }
     }
@@ -252,19 +287,29 @@ class MusicProvider extends ChangeNotifier {
     final cachedPaths = _box.get(_cacheKey);
     if (cachedPaths != null && cachedPaths.isNotEmpty) {
       _playlist = (cachedPaths as List).map((path) => File(path)).toList();
+      log('[$_logTag] Loaded ${_playlist.length} songs from cache.');
     } else {
       await _scanAndCacheSongs();
     }
 
+    // Check again in case scanning failed or found no songs
     if (_playlist.isNotEmpty) {
+      int initialIndex;
       if (_isShuffling) {
-        final randomIndex =
-            DateTime.now().millisecondsSinceEpoch % _playlist.length;
-        setCurrentIndex(randomIndex);
+        // <--- FIX 1: Use Random instance for initial shuffle index --->
+        initialIndex = _random.nextInt(_playlist.length);
+        log(
+          '[$_logTag] Shuffle is ON. Starting at random index: $initialIndex',
+        );
       } else {
         final savedIndex = _box.get(_currentIndexKey, defaultValue: 0) as int;
-        setCurrentIndex(savedIndex.clamp(0, _playlist.length - 1));
+        initialIndex = savedIndex.clamp(0, _playlist.length - 1);
+        log(
+          '[$_logTag] Shuffle is OFF. Starting at saved index: $initialIndex',
+        );
       }
+
+      setCurrentIndex(initialIndex);
     }
 
     _loading = false;
@@ -272,25 +317,41 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> setCurrentIndex(int index) async {
-    if (index < 0 || index >= _playlist.length) return;
+    if (index < 0 || index >= _playlist.length) {
+      log('[$_logTag] Error: Attempted to set invalid index: $index');
+      return;
+    }
 
     _currentIndex = index;
     await _box.put(_currentIndexKey, index);
+    log(
+      '[$_logTag] Current Index set to: $index. Song: ${_playlist[index].path.split('/').last}',
+    );
 
-    await fetchAlbumArtForCurrent(_playlist[index].path);
+    // We do not await this, as fetching album art is slow
+    fetchAlbumArtForCurrent(_playlist[index].path);
     await _playCurrent();
   }
 
   Future<void> _playCurrent() async {
+    if (_playlist.isEmpty) return;
+
     try {
-      await _player.setFilePath(_playlist[_currentIndex].path);
+      final currentSongPath = _playlist[_currentIndex].path;
+      log('[$_logTag] Starting playback for: $currentSongPath');
+
+      await _player.setFilePath(currentSongPath);
       await _player.seek(Duration.zero);
+
+      // Set the loop mode based on the current state
       await _player.setLoopMode(_isRepeating ? LoopMode.one : LoopMode.off);
+
       await _player.play();
       _scrollToCurrentSong();
       notifyListeners();
     } catch (e) {
-      log("Playback error: $e");
+      log('[$_logTag] Playback error: $e. Skipping to next.');
+      // Important: if a song fails to play, skip it
       next();
     }
   }
@@ -313,21 +374,32 @@ class MusicProvider extends ChangeNotifier {
         '-i "$path" -an -vcodec copy "$coverPath"',
       );
       final returnCode = await session.getReturnCode();
+
       if (returnCode?.isValueSuccess() == true && await coverFile.exists()) {
+        log('[$_logTag] Album art extracted successfully.');
         return await coverFile.readAsBytes();
+      } else {
+        log('[$_logTag] FFmpeg failed to extract album art. Code: $returnCode');
       }
     } catch (e) {
-      log("FFmpeg album art error: $e");
+      log('[$_logTag] FFmpeg album art error: $e');
     }
     return null;
   }
 
   void _handleSongComplete() {
-    _isRepeating ? _player.seek(Duration.zero) : next();
-    if (_isRepeating) _player.play();
+    if (_isRepeating) {
+      _player.seek(Duration.zero);
+      _player.play();
+      log('[$_logTag] Song complete. Repeating current track.');
+    } else {
+      log('[$_logTag] Song complete. Moving to next track.');
+      next();
+    }
   }
 
   void _scrollToCurrentSong() {
+    // ... scroll logic remains the same
     final index = filteredPlaylist.indexWhere(
       (f) => f.path == _playlist[_currentIndex].path,
     );
@@ -344,34 +416,49 @@ class MusicProvider extends ChangeNotifier {
 
   void next() {
     if (_playlist.isEmpty) return;
-    final nextIndex =
-        _isShuffling
-            ? DateTime.now().millisecondsSinceEpoch % _playlist.length
-            : (_currentIndex + 1) % _playlist.length;
+
+    final int nextIndex;
+
+    if (_isShuffling) {
+      // <--- FIX 2: Use Random instance for next track index (NON-REPEATING SHUFFLE REQUIRES just_audio PLAYLIST) --->
+      nextIndex = _random.nextInt(_playlist.length);
+      log('[$_logTag] NEXT (Shuffle): New index determined: $nextIndex');
+    } else {
+      // Normal sequential playback
+      nextIndex = (_currentIndex + 1) % _playlist.length;
+      log('[$_logTag] NEXT (Sequential): New index determined: $nextIndex');
+    }
+
     setCurrentIndex(nextIndex);
   }
 
   void previous() {
     if (_playlist.isEmpty) return;
     final prevIndex = (_currentIndex - 1 + _playlist.length) % _playlist.length;
+    log('[$_logTag] PREVIOUS: New index determined: $prevIndex');
     setCurrentIndex(prevIndex);
   }
 
   void toggleRepeat() {
     _isRepeating = !_isRepeating;
+    // Ensure the hardware player's loop mode is updated
     _player.setLoopMode(_isRepeating ? LoopMode.one : LoopMode.off);
+    log('[$_logTag] Toggled Repeat to: $_isRepeating');
     notifyListeners();
   }
 
   void toggleShuffle() async {
     _isShuffling = !_isShuffling;
     await _box.put(_shuffleKey, _isShuffling);
+    log('[$_logTag] Toggled Shuffle to: $_isShuffling');
     notifyListeners();
   }
 
   Future<void> _scanAndCacheSongs() async {
+    // ... scanning logic remains the same but with added logs
     _loading = true;
     notifyListeners();
+    log('[$_logTag] Starting song scan and cache...');
 
     final List<File> foundSongs = [];
     const searchDirs = [
@@ -387,7 +474,6 @@ class MusicProvider extends ChangeNotifier {
       }
     }
 
-    // Remove duplicates by file path
     final uniquePaths = <String>{};
     final filtered = foundSongs.where((f) => uniquePaths.add(f.path)).toList();
     filtered.sort((a, b) => a.path.compareTo(b.path));
@@ -396,6 +482,9 @@ class MusicProvider extends ChangeNotifier {
 
     _playlist = filtered;
     _loading = false;
+    log(
+      '[$_logTag] Scan complete. Found and cached ${_playlist.length} unique songs.',
+    );
     notifyListeners();
   }
 
@@ -408,12 +497,13 @@ class MusicProvider extends ChangeNotifier {
         }
       }
     } catch (e) {
-      log("Directory scan error: $e");
+      log('[$_logTag] Directory scan error in ${dir.path}: $e');
     }
     return files;
   }
 
   Future<void> refreshSongs() async {
+    log('[$_logTag] Refreshing song list.');
     await _scanAndCacheSongs();
     if (_playlist.isNotEmpty) {
       setCurrentIndex(0);
@@ -443,6 +533,7 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> saveFavorites() async {
+    log('[$_logTag] Saving ${_favorites.length} favorites.');
     await _box.put(_favoritesCacheKey, _favorites.toList());
   }
 
@@ -452,6 +543,7 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> stop() async {
+    log('[$_logTag] Player stopping.');
     await _player.stop();
     await _player.seek(Duration.zero);
     notifyListeners();
@@ -459,10 +551,14 @@ class MusicProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    log('[$_logTag] Disposing MusicProvider.');
     _player.dispose();
     scrollController.dispose();
     searchController.dispose();
-    _box.close();
+    _sleepTimer?.cancel();
+    _countdownTimer?.cancel();
+    // Do not close the box here if other parts of the app rely on it being open.
+    // _box.close();
     super.dispose();
   }
 }
